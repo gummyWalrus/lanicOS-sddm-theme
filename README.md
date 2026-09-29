@@ -56,7 +56,46 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/keyitdev/sddm-astronaut-
 > Works on distributions using pacman, xbps-install, dnf, zypper.   
 > Remember to always read the scripts you run from the internet.
 
-### Manual Installation
+### NixOS Installation
+
+#### Using System Configuration with Custom Overrides
+
+While not officially packaged by the upstream maintainers, there is a [community-maintained package](https://search.nixos.org/packages?channel=unstable&query=sddm-astronaut#show=sddm-astronaut) maintained by @DaniD3v, @uxodb, and @qweered. You can install and customize the theme by creating an override of the package in your `configuration.nix`:
+
+```nix
+let
+  sddm-astronaut = (pkgs.sddm-astronaut.override {
+    embeddedTheme = "japanese_aesthetic";  # or any other theme
+    themeConfig = {
+      # Customize colors and settings
+      HeaderTextColor = "#d5c4a1";
+      Background = "Backgrounds/your-custom-background.png";
+      # ... other theme configuration options
+    };
+  }).overrideAttrs (oldAttrs: {
+    # Optional: Inject custom background image
+    installPhase = oldAttrs.installPhase + ''
+      chmod u+w $out/share/sddm/themes/sddm-astronaut-theme/Backgrounds/
+      cp ${./relative/path/to/your-custom-background.png} \
+        $out/share/sddm/themes/sddm-astronaut-theme/Backgrounds/your-custom-background.png
+    '';
+  });
+in
+{
+  environment.systemPackages = [ sddm-astronaut ];
+  
+  services.displayManager.sddm = {
+    enable = true;
+    package = pkgs.kdePackages.sddm;
+    extraPackages = with pkgs; [
+      kdePackages.qtmultimedia # Required for video backgrounds/audio
+    ];
+    theme = "sddm-astronaut-theme";
+  };
+}
+```
+
+## Manual Installation
 
 1. Install **dependencies**
 
@@ -69,7 +108,7 @@ sddm qt6-svg qt6-virtualkeyboard qt6-multimedia-ffmpeg     # Arch
 sddm qt6-svg qt6-virtualkeyboard qt6-multimedia            # Void
 sddm qt6-qtsvg qt6-qtvirtualkeyboard qt6-qtmultimedia      # Fedora
 sddm-qt6 libQt6Svg6 qt6-virtualkeyboard qt6-virtualkeyboard-imports qt6-multimedia qt6-multimedia-imports        # OpenSUSE
-sddm libqt6svg6 qt6-virtualkeyboard-plugin libqt6multimedia6 qml6-module-qtquick-controls qml6-module-qtquick-effects libxcb-cursor0 # Debian Unstable
+sddm qt6-svg-dev qml6-module-qtquick-virtualkeyboard qt6-multimedia-dev qml6-module-qtquick-controls qml6-module-qtquick-effects libxcb-cursor0 # Debian trixie (13.5)
 ```
 
 2. Clone this repository

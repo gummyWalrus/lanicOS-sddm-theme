@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 ## SDDM Astronaut Theme Installer
 ## Based on original by Keyitdev https://github.com/Keyitdev/sddm-astronaut-theme
@@ -111,7 +111,7 @@ install_deps() {
         xbps-install) sudo xbps-install -y sddm qt6-svg qt6-virtualkeyboard qt6-multimedia ;;
         dnf) sudo dnf install -y sddm qt6-qtsvg qt6-qtvirtualkeyboard qt6-qtmultimedia ;;
         zypper) sudo zypper install -y sddm libQt6Svg6 qt6-virtualkeyboard qt6-multimedia ;;
-        apt) sudo apt update && sudo apt install -y sddm qt6-svg-dev qml6-module-qtquick-virtualkeyboard qt6-multimedia-dev ;;
+        apt) sudo apt update && sudo apt install -y sddm qt6-svg-dev qml6-module-qtquick-virtualkeyboard qt6-multimedia-dev qml6-module-qtquick-controls qml6-module-qtquick-effects libxcb-cursor0 ;;
         *) error "Unsupported package manager"; return 1 ;;
     esac
     info "Dependencies installed"
@@ -153,7 +153,7 @@ install_theme() {
 # Select theme variant
 select_theme() {
     [[ ! -f "$METADATA" ]] && { error "Install theme first"; return 1; }
-    
+
     local theme=$(choose "${THEMES[@]}" || echo "astronaut")
     sudo sed -i "s|^ConfigFile=.*|ConfigFile=Themes/${theme}.conf|" "$METADATA"
     info "Selected theme: $theme"
@@ -181,8 +181,19 @@ _disable_dm_dinit() {
     done
 }
 
+_runit_sv() {
+    if   [ -d /etc/sv ];       then echo "/etc/sv"
+    elif [ -d /etc/runit/sv ]; then echo "/etc/runit/sv"
+    else
+        error "Cannot find runit service configuration files directory"
+        return 1
+    fi
+}
+
 _runit_runsvdir() {
-    if   [ -d /run/runit/service ];          then echo "/run/runit/service"
+    if   [ -d /service ];                    then echo "/service" # legacy/upstream symlink
+    elif [ -d /var/service ];                then echo "/var/service"
+    elif [ -d /run/runit/service ];          then echo "/run/runit/service"
     elif [ -d /etc/runit/runsvdir/default ]; then echo "/etc/runit/runsvdir/default"
     else
         error "Cannot find runit service directory"
@@ -230,16 +241,23 @@ enable_sddm() {
             ;;
 
         runit)
+            local sv
             local runsvdir
+            sv=$(_runit_sv)
             runsvdir=$(_runit_runsvdir)
 
-            if [ ! -d /etc/sv/sddm ]; then
-                error "/etc/sv/sddm not found - is sddm-runit (or equivalent) installed?"
+            if [ -f /etc/os-release ] && grep -q 'ID=artix' /etc/os-release; then
+                sudo pacman --needed -S sddm-runit
+                info "sddm-runit installed for Artix Linux"
+            fi
+
+            if [ ! -d "$sv/sddm" ]; then
+                error "$sv/sddm not found - is sddm-runit (or equivalent) installed?"
                 return 1
             fi
 
             _disable_dm_runit
-            sudo ln -sf /etc/sv/sddm "$runsvdir/sddm"
+            sudo ln -sf "$sv/sddm" "$runsvdir/"
             info "sddm symlinked into $runsvdir"
             ;;
 
@@ -268,7 +286,7 @@ enable_sddm() {
             echo ""
             echo "  systemd  -  sudo systemctl enable --now sddm"
             echo "  openrc   -  sudo rc-update add sddm default"
-            echo "  runit    -  sudo ln -s /etc/sv/sddm /run/runit/service/"
+            echo "  runit    -  sudo ln -s /etc/sv/sddm /var/service/ || sudo ln -s /etc/runit/sv/sddm /run/runit/service/"
             echo "  dinit    -  sudo ln -s /etc/dinit.d/sddm /etc/dinit.d/boot.d/sddm"
             return 1
             ;;
@@ -280,7 +298,7 @@ enable_sddm() {
 
 preview_theme(){
     local log_file="/tmp/${THEME_NAME}_$DATE.txt"
-    
+
     sddm-greeter-qt6 --test-mode --theme /usr/share/sddm/themes/sddm-astronaut-theme/ > $log_file 2>&1 &
     greeter_pid=$!
 
@@ -298,7 +316,7 @@ preview_theme(){
 
 
     local theme="$(sed -n 's|^ConfigFile=Themes/\(.*\)\.conf|\1|p' $METADATA)"
-    info "Preview closed ($theme theme found)." 
+    info "Preview closed ($theme theme found)."
     info "Log file: $log_file"
 }
 
